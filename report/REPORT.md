@@ -717,9 +717,12 @@ tracked objects per record, so a generation-0 collection landing mid-batch shows
 up as one inflated sample. Both configurations allocate identically, so this
 favours neither.
 
-Residual noise, as the ratio of the median batch to the fastest: median **1.16×**
-across all 72 measurements, worst 1.43×. **Differences below roughly 1.2× should
-not be read as real.**
+Residual noise, as the ratio of the median batch to the fastest: median **1.05×**
+across all 72 measurements. The tail is worse than that median suggests, and it
+is concentrated: the five worst measurements (up to 2.11×) are all at 1 KiB and
+4 KiB. **Differences below roughly 1.2× should not be read as real, and at 1–4
+KiB the bar is higher still.** The conclusions drawn below rest on ratios of
+1.7× and above, or on the absence of a difference where the ratio is ~1.05×.
 
 ### 4.2 Required sizes
 
@@ -727,12 +730,12 @@ Full subsystem path — what an application actually pays.
 
 | Record size | Operation | AES-GCM | ChaCha20-Poly1305 | Ratio |
 |---|---|---|---|---|
-| 64 B | protect | 7.62 µs (8 MiB/s) | 8.06 µs (8 MiB/s) | 1.06× |
-| 64 B | recover | 10.48 µs (6 MiB/s) | 10.64 µs (6 MiB/s) | 1.02× |
-| 1 KiB | protect | 8.24 µs (119 MiB/s) | 9.15 µs (107 MiB/s) | 1.11× |
-| 1 KiB | recover | 10.95 µs (89 MiB/s) | 11.57 µs (84 MiB/s) | 1.06× |
-| 64 KiB | protect | 22.60 µs (2,765 MiB/s) | 45.67 µs (1,368 MiB/s) | **2.02×** |
-| 64 KiB | recover | 28.21 µs (2,216 MiB/s) | 50.11 µs (1,247 MiB/s) | **1.78×** |
+| 64 B | protect | 5.53 µs (11 MiB/s) | 5.72 µs (11 MiB/s) | 1.04× |
+| 64 B | recover | 7.30 µs (8 MiB/s) | 7.67 µs (8 MiB/s) | 1.05× |
+| 1 KiB | protect | 6.38 µs (153 MiB/s) | 7.40 µs (132 MiB/s) | 1.16× |
+| 1 KiB | recover | 8.48 µs (115 MiB/s) | 8.88 µs (110 MiB/s) | 1.05× |
+| 64 KiB | protect | 18.37 µs (3,402 MiB/s) | 36.61 µs (1,707 MiB/s) | **1.99×** |
+| 64 KiB | recover | 23.80 µs (2,626 MiB/s) | 41.49 µs (1,506 MiB/s) | **1.74×** |
 
 ![Throughput at the three required sizes](../evidence/perf-required-sizes.png)
 
@@ -746,15 +749,15 @@ regimes, and the reason is §4.3.
 
 | Record size | AES-GCM protect | ChaCha20 protect | Ratio | AES-GCM recover | ChaCha20 recover | Ratio |
 |---|---|---|---|---|---|---|
-| 16 B | 6.71 µs | 6.98 µs | 1.04× | 9.56 µs | 8.99 µs | 0.94× |
-| 64 B | 7.62 µs | 8.06 µs | 1.06× | 10.48 µs | 10.64 µs | 1.02× |
-| 256 B | 7.92 µs | 8.45 µs | 1.07× | 10.69 µs | 11.07 µs | 1.04× |
-| 1 KiB | 8.24 µs | 9.15 µs | 1.11× | 10.95 µs | 11.57 µs | 1.06× |
-| 4 KiB | 7.58 µs | 9.24 µs | 1.22× | 10.15 µs | 11.66 µs | 1.15× |
-| 16 KiB | 10.99 µs | 16.94 µs | 1.54× | 13.88 µs | 19.62 µs | 1.41× |
-| 64 KiB | 22.60 µs | 45.67 µs | 2.02× | 28.21 µs | 50.11 µs | 1.78× |
-| 256 KiB | 97.10 µs | 185.49 µs | 1.91× | 85.23 µs | 174.01 µs | 2.04× |
-| 1 MiB | 902.92 µs | 1265.90 µs | 1.40× | 1034.59 µs | 1311.62 µs | 1.27× |
+| 16 B | 5.35 µs | 5.61 µs | 1.05× | 7.22 µs | 7.66 µs | 1.06× |
+| 64 B | 5.53 µs | 5.73 µs | 1.04× | 7.30 µs | 7.67 µs | 1.05× |
+| 256 B | 5.79 µs | 6.01 µs | 1.04× | 7.73 µs | 7.93 µs | 1.03× |
+| 1 KiB | 6.38 µs | 7.40 µs | 1.16× | 8.48 µs | 8.88 µs | 1.05× |
+| 4 KiB | 6.70 µs | 7.85 µs | 1.17× | 8.88 µs | 10.18 µs | 1.15× |
+| 16 KiB | 9.13 µs | 13.76 µs | 1.51× | 12.12 µs | 16.38 µs | 1.35× |
+| 64 KiB | 18.37 µs | 36.61 µs | 1.99× | 23.80 µs | 41.49 µs | 1.74× |
+| 256 KiB | 69.61 µs | 146.26 µs | 2.10× | 73.94 µs | 148.56 µs | 2.01× |
+| 1 MiB | 794.84 µs | 1076.43 µs | 1.35× | 817.37 µs | 1192.91 µs | 1.46× |
 
 The per-record cost is **almost flat below about 4 KiB** and linear above it.
 That shape is the whole explanation for the two regimes, and the reason is the
@@ -762,13 +765,13 @@ fixed cost per record:
 
 | Record size | Subsystem overhead, protect | Overhead as share of total |
 |---|---|---|
-| 64 B | +5.43 µs | 71% |
-| 1 KiB | +5.76 µs | 70% |
-| 16 KiB | +5.33 µs | 49% |
-| 64 KiB | +6.86 µs | 30% |
+| 64 B | +3.95 µs | 71% |
+| 1 KiB | +4.53 µs | 71% |
+| 16 KiB | +4.54 µs | 50% |
+| 64 KiB | +5.42 µs | 29% |
 
-Protecting a record costs a near-constant **≈ 5.5 µs** and recovering one
-**≈ 8.3 µs**, independent of size — nonce allocation, header construction,
+Protecting a record costs a near-constant **≈ 4.3 µs** and recovering one
+**≈ 6.3 µs**, independent of size — nonce allocation, header construction,
 `struct` packing and unpacking, the binding checks, the replay-window update, and
 the Python-level object allocation around all of it. Below ~4 KiB that fixed
 cost is 70–80% of the total, so *the choice of cipher barely matters*: the
@@ -797,32 +800,37 @@ licenses reading the AES-GCM change as an AES-NI effect.
 
 | Record size | AES-GCM (AES-NI) | AES-GCM (software) | Slowdown | ChaCha20 (control) |
 |---|---|---|---|---|
-| 1 KiB | 394 MiB/s | 112 MiB/s | 3.5× | 319 → 315 MiB/s |
-| 4 KiB | 1,419 MiB/s | 153 MiB/s | 9.3× | 894 → 757 MiB/s |
-| 16 KiB | 2,764 MiB/s | 169 MiB/s | 16.4× | 1,377 → 1,163 MiB/s |
-| 64 KiB | 3,970 MiB/s | 167 MiB/s | **23.8×** | 1,631 → 1,384 MiB/s |
-| 256 KiB | 4,309 MiB/s | 143 MiB/s | **30.2×** | 1,708 → 1,350 MiB/s |
-| 1 MiB | 1,856 MiB/s | 136 MiB/s | 13.6× | 1,095 → 841 MiB/s |
+| 1 KiB | 528 MiB/s | 172 MiB/s | 3.1× | 429 → 383 MiB/s |
+| 4 KiB | 1,603 MiB/s | 223 MiB/s | 7.2× | 1,095 → 1,093 MiB/s |
+| 16 KiB | 3,404 MiB/s | 242 MiB/s | 14.1× | 1,687 → 1,694 MiB/s |
+| 64 KiB | 4,825 MiB/s | 247 MiB/s | **19.6×** | 1,982 → 1,984 MiB/s |
+| 256 KiB | 5,306 MiB/s | 249 MiB/s | **21.3×** | 2,074 → 2,046 MiB/s |
+| 1 MiB | 2,177 MiB/s | 225 MiB/s | 9.7× | 1,370 → 1,252 MiB/s |
 
 ![AES-NI comparison](../evidence/perf-aesni.png)
 
-**The ordering reverses decisively.** At 64 KiB, AES-GCM falls from 3,970 to 167
-MiB/s while the control holds within noise — so ChaCha20-Poly1305 goes from being
-2.4× *slower* to **8.3× faster**.
+**The ordering reverses decisively.** At 64 KiB, AES-GCM falls from 4,825 to 247
+MiB/s — so ChaCha20-Poly1305 goes from being 2.4× *slower* to **8.0× faster**.
 
-One methodological note that materially affected this result: supplying the mask
-without the trailing `:~0x0` also causes OpenSSL to zero the CPUID leaf-7 feature
-words, which disables AVX2 — and AVX2 is exactly what ChaCha20's fast path uses.
-Under that mask the "control" itself dropped from ~1,620 to ~890 MiB/s, making
-AES-GCM's relative loss look far smaller than it is. The control column above is
-what caught it; without a control the error would have gone unnoticed and the
-conclusion would have been understated.
+The control column is what makes that reading legitimate, and here it is almost
+exact: 1,982 → 1,984 MiB/s at 64 KiB, 1,687 → 1,694 at 16 KiB, 1,095 → 1,093 at
+4 KiB. ChaCha20-Poly1305 does not notice the mask at all, so the collapse in the
+AES-GCM column cannot be attributed to the machine having changed underneath the
+measurement.
+
+One methodological note, because the control is what caught it. Supplying the
+mask *without* the trailing `:~0x0` also causes OpenSSL to zero the CPUID leaf-7
+feature words, which disables AVX2 — and AVX2 is exactly what ChaCha20's fast
+path uses. Under that mask a separate diagnostic measured the "control" itself
+dropping from ~1,620 to ~890 MiB/s, which would have made AES-GCM's relative
+loss look far smaller than it is. Without a control column the error would have
+gone unnoticed and this section would have understated its own conclusion.
 
 ### 4.5 TR-8 outcome
 
 | | |
 |---|---|
-| **Observed Behaviour** | Both configurations functional at all nine sizes. Below ~4 KiB they are within noise of each other (1.02–1.11×) because 70–80% of the time is fixed per-record cost. Above ~16 KiB AES-GCM leads by 1.4–2.0× on this CPU. With AES-NI and PCLMULQDQ disabled, AES-GCM slows by up to 30× and ChaCha20-Poly1305 leads by ~8×. |
+| **Observed Behaviour** | Both configurations functional at all nine sizes. Below ~4 KiB they are within noise of each other (1.03–1.16×) because 70–78% of the time is fixed per-record cost. Above ~16 KiB AES-GCM leads by 1.35–2.10× on this CPU. With AES-NI and PCLMULQDQ disabled, AES-GCM slows by up to 21× while the ChaCha20-Poly1305 control is unmoved, and ChaCha20-Poly1305 leads by ~8×. |
 | **Outcome** | **PASS** — measured for both configurations at 64 B, 1 KiB and 64 KiB as required, plus six further sizes. |
 | **Supporting Evidence** | `evidence/perf-summary.md`, `evidence/perf-results.json`, `evidence/perf-*.png` |
 
@@ -842,8 +850,8 @@ target does.
   modern x86 laptops, ARMv8 with crypto extensions). AES-GCM, by roughly 2×.
 - **Hardware is unknown, old, or embedded.** ChaCha20-Poly1305. Its worst case
   is far better than AES-GCM's worst case: at 4 KiB and above, software AES-GCM
-  measured 136–169 MiB/s here, against ChaCha20's 757–1,384 MiB/s under the same
-  conditions.
+  measured 223–249 MiB/s here, against ChaCha20's 1,093–2,046 MiB/s under the
+  same conditions — roughly an eightfold gap.
   This asymmetry is why TLS 1.3 clients without AES hardware negotiate
   ChaCha20-Poly1305, and why mobile stacks prefer it.
 

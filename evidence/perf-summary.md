@@ -18,7 +18,7 @@ ChaCha20-Poly1305 under identical conditions.
 | openssl | OpenSSL 3.3.2 3 Sep 2024 |
 | process priority | default (unchanged) |
 | cpu affinity | pinned to CPU 2 |
-| timestamp | 2026-08-16 15:22:07 |
+| timestamp | 2026-08-16 20:29:33 |
 | batches per measurement | 18 (2 sweeps x 9; **minimum** reported) |
 | configuration ordering | the two AEAD suites measured back to back |
 | batch byte budget | 64 MiB |
@@ -39,8 +39,8 @@ priority for the same reason.
 How much noise remained, as the ratio of the median batch to the
 fastest batch (1.00 would mean a perfectly quiet host):
 
-- Median across all 72 measurements: **1.16x**
-- Worst five: chacha20-poly1305/open/1 MiB 1.43x, aes-gcm/open/1 MiB 1.41x, chacha20-poly1305/recover/1 MiB 1.39x, aes-gcm/seal/16 KiB 1.34x, chacha20-poly1305/recover/16 B 1.30x
+- Median across all 72 measurements: **1.05x**
+- Worst five: chacha20-poly1305/recover/1 KiB 2.11x, chacha20-poly1305/seal/1 KiB 2.10x, chacha20-poly1305/open/1 KiB 2.05x, aes-gcm/protect/4 KiB 2.03x, aes-gcm/seal/1 KiB 2.01x
 
 Differences smaller than the residual spread should not be read as
 real; the conclusions drawn in the report rest on ratios well above it.
@@ -51,12 +51,12 @@ Full subsystem path, i.e. what an application actually pays.
 
 | Record size | Operation | AES-GCM | ChaCha20-Poly1305 | Faster | Margin |
 |---|---|---|---|---|---|
-| 64 B | protect | 7.62 us (8 MiB/s) | 8.06 us (8 MiB/s) | AES-GCM | 1.06x |
-| 64 B | recover | 10.48 us (6 MiB/s) | 10.64 us (6 MiB/s) | AES-GCM | 1.02x |
-| 1 KiB | protect | 8.24 us (119 MiB/s) | 9.15 us (107 MiB/s) | AES-GCM | 1.11x |
-| 1 KiB | recover | 10.95 us (89 MiB/s) | 11.57 us (84 MiB/s) | AES-GCM | 1.06x |
-| 64 KiB | protect | 22.60 us (2,765 MiB/s) | 45.67 us (1,368 MiB/s) | AES-GCM | 2.02x |
-| 64 KiB | recover | 28.21 us (2,216 MiB/s) | 50.11 us (1,247 MiB/s) | AES-GCM | 1.78x |
+| 64 B | protect | 5.53 us (11 MiB/s) | 5.72 us (11 MiB/s) | AES-GCM | 1.04x |
+| 64 B | recover | 7.30 us (8 MiB/s) | 7.67 us (8 MiB/s) | AES-GCM | 1.05x |
+| 1 KiB | protect | 6.38 us (153 MiB/s) | 7.40 us (132 MiB/s) | AES-GCM | 1.16x |
+| 1 KiB | recover | 8.48 us (115 MiB/s) | 8.88 us (110 MiB/s) | AES-GCM | 1.05x |
+| 64 KiB | protect | 18.37 us (3,402 MiB/s) | 36.61 us (1,707 MiB/s) | AES-GCM | 1.99x |
+| 64 KiB | recover | 23.80 us (2,626 MiB/s) | 41.49 us (1,506 MiB/s) | AES-GCM | 1.74x |
 
 ## All measured sizes
 
@@ -64,29 +64,29 @@ Full subsystem path, i.e. what an application actually pays.
 
 | Record size | AES-GCM us/rec | AES-GCM MiB/s | ChaCha20 us/rec | ChaCha20 MiB/s | Ratio (ChaCha/AES) |
 |---|---|---|---|---|---|
-| 16 B | 6.713 | 2 | 6.979 | 2 | 1.04x |
-| 64 B | 7.621 | 8 | 8.056 | 8 | 1.06x |
-| 256 B | 7.916 | 31 | 8.452 | 29 | 1.07x |
-| 1 KiB | 8.235 | 119 | 9.147 | 107 | 1.11x |
-| 4 KiB | 7.584 | 515 | 9.238 | 423 | 1.22x |
-| 16 KiB | 10.987 | 1,422 | 16.938 | 923 | 1.54x |
-| 64 KiB | 22.602 | 2,765 | 45.674 | 1,368 | 2.02x |
-| 256 KiB | 97.096 | 2,575 | 185.487 | 1,348 | 1.91x |
-| 1 MiB | 902.923 | 1,108 | 1265.895 | 790 | 1.40x |
+| 16 B | 5.349 | 3 | 5.606 | 3 | 1.05x |
+| 64 B | 5.527 | 11 | 5.725 | 11 | 1.04x |
+| 256 B | 5.789 | 42 | 6.009 | 41 | 1.04x |
+| 1 KiB | 6.381 | 153 | 7.403 | 132 | 1.16x |
+| 4 KiB | 6.695 | 583 | 7.847 | 498 | 1.17x |
+| 16 KiB | 9.127 | 1,712 | 13.762 | 1,135 | 1.51x |
+| 64 KiB | 18.372 | 3,402 | 36.613 | 1,707 | 1.99x |
+| 256 KiB | 69.606 | 3,592 | 146.260 | 1,709 | 2.10x |
+| 1 MiB | 794.842 | 1,258 | 1076.427 | 929 | 1.35x |
 
 ### Recovery (receiver)
 
 | Record size | AES-GCM us/rec | AES-GCM MiB/s | ChaCha20 us/rec | ChaCha20 MiB/s | Ratio (ChaCha/AES) |
 |---|---|---|---|---|---|
-| 16 B | 9.555 | 2 | 8.986 | 2 | 0.94x |
-| 64 B | 10.477 | 6 | 10.641 | 6 | 1.02x |
-| 256 B | 10.689 | 23 | 11.070 | 22 | 1.04x |
-| 1 KiB | 10.954 | 89 | 11.575 | 84 | 1.06x |
-| 4 KiB | 10.152 | 385 | 11.663 | 335 | 1.15x |
-| 16 KiB | 13.880 | 1,126 | 19.621 | 796 | 1.41x |
-| 64 KiB | 28.207 | 2,216 | 50.111 | 1,247 | 1.78x |
-| 256 KiB | 85.233 | 2,933 | 174.013 | 1,437 | 2.04x |
-| 1 MiB | 1034.589 | 967 | 1311.619 | 762 | 1.27x |
+| 16 B | 7.222 | 2 | 7.658 | 2 | 1.06x |
+| 64 B | 7.296 | 8 | 7.671 | 8 | 1.05x |
+| 256 B | 7.729 | 32 | 7.934 | 31 | 1.03x |
+| 1 KiB | 8.484 | 115 | 8.884 | 110 | 1.05x |
+| 4 KiB | 8.876 | 440 | 10.175 | 384 | 1.15x |
+| 16 KiB | 12.117 | 1,290 | 16.381 | 954 | 1.35x |
+| 64 KiB | 23.800 | 2,626 | 41.493 | 1,506 | 1.74x |
+| 256 KiB | 73.939 | 3,381 | 148.560 | 1,683 | 2.01x |
+| 1 MiB | 817.372 | 1,223 | 1192.911 | 838 | 1.46x |
 
 ## Subsystem overhead over the bare AEAD call
 
@@ -95,15 +95,15 @@ allocation, header build/parse, binding checks and the replay window.
 
 | Record size | AES-GCM protect | AES-GCM recover | ChaCha20 protect | ChaCha20 recover |
 |---|---|---|---|---|
-| 16 B | +4.877 us (73%) | +7.643 us (80%) | +4.811 us (69%) | +6.783 us (75%) |
-| 64 B | +5.432 us (71%) | +8.294 us (79%) | +5.602 us (70%) | +8.146 us (77%) |
-| 256 B | +5.668 us (72%) | +8.398 us (79%) | +5.774 us (68%) | +8.387 us (76%) |
-| 1 KiB | +5.757 us (70%) | +8.406 us (77%) | +6.082 us (66%) | +8.772 us (76%) |
-| 4 KiB | +4.832 us (64%) | +7.375 us (73%) | +4.870 us (53%) | +7.296 us (63%) |
-| 16 KiB | +5.334 us (49%) | +8.311 us (60%) | +5.593 us (33%) | +8.155 us (42%) |
-| 64 KiB | +6.859 us (30%) | +12.491 us (44%) | +7.362 us (16%) | +11.821 us (24%) |
-| 256 KiB | +39.075 us (40%) | +27.657 us (32%) | +39.107 us (21%) | +26.107 us (15%) |
-| 1 MiB | +364.008 us (40%) | +520.017 us (50%) | +352.944 us (28%) | +409.034 us (31%) |
+| 16 B | +3.803 us (71%) | +5.659 us (78%) | +3.886 us (69%) | +5.927 us (77%) |
+| 64 B | +3.948 us (71%) | +5.679 us (78%) | +3.969 us (69%) | +5.888 us (77%) |
+| 256 B | +4.167 us (72%) | +6.035 us (78%) | +4.086 us (68%) | +5.929 us (75%) |
+| 1 KiB | +4.530 us (71%) | +6.592 us (78%) | +5.129 us (69%) | +6.563 us (74%) |
+| 4 KiB | +4.258 us (64%) | +6.516 us (73%) | +4.280 us (55%) | +6.563 us (65%) |
+| 16 KiB | +4.536 us (50%) | +7.521 us (62%) | +4.497 us (33%) | +7.053 us (43%) |
+| 64 KiB | +5.419 us (29%) | +10.911 us (46%) | +5.073 us (14%) | +9.858 us (24%) |
+| 256 KiB | +22.485 us (32%) | +27.124 us (37%) | +25.722 us (18%) | +28.472 us (19%) |
+| 1 MiB | +335.444 us (42%) | +361.725 us (44%) | +346.500 us (32%) | +441.448 us (37%) |
 
 ## Hardware acceleration: AES-GCM with AES-NI disabled
 
@@ -121,22 +121,22 @@ relative loss look smaller than it is. See the note in `bench/perf.py`.
 
 | Record size | Operation | AES-GCM (AES-NI) | AES-GCM (software) | Slowdown | ChaCha20 (control) |
 |---|---|---|---|---|---|
-| 16 B | seal | 8 MiB/s | 6 MiB/s | 1.33x slower | 7 -> 6 MiB/s |
-| 16 B | open | 8 MiB/s | 6 MiB/s | 1.28x slower | 7 -> 5 MiB/s |
-| 64 B | seal | 28 MiB/s | 16 MiB/s | 1.76x slower | 25 -> 25 MiB/s |
-| 64 B | open | 28 MiB/s | 18 MiB/s | 1.59x slower | 24 -> 24 MiB/s |
-| 256 B | seal | 109 MiB/s | 56 MiB/s | 1.92x slower | 91 -> 90 MiB/s |
-| 256 B | open | 107 MiB/s | 60 MiB/s | 1.77x slower | 91 -> 88 MiB/s |
-| 1 KiB | seal | 394 MiB/s | 112 MiB/s | 3.52x slower | 319 -> 315 MiB/s |
-| 1 KiB | open | 383 MiB/s | 115 MiB/s | 3.32x slower | 348 -> 308 MiB/s |
-| 4 KiB | seal | 1,419 MiB/s | 153 MiB/s | 9.30x slower | 894 -> 757 MiB/s |
-| 4 KiB | open | 1,406 MiB/s | 144 MiB/s | 9.75x slower | 895 -> 763 MiB/s |
-| 16 KiB | seal | 2,764 MiB/s | 169 MiB/s | 16.38x slower | 1,377 -> 1,163 MiB/s |
-| 16 KiB | open | 2,806 MiB/s | 168 MiB/s | 16.73x slower | 1,363 -> 1,108 MiB/s |
-| 64 KiB | seal | 3,970 MiB/s | 167 MiB/s | 23.84x slower | 1,631 -> 1,384 MiB/s |
-| 64 KiB | open | 3,977 MiB/s | 172 MiB/s | 23.07x slower | 1,632 -> 1,353 MiB/s |
-| 256 KiB | seal | 4,309 MiB/s | 143 MiB/s | 30.15x slower | 1,708 -> 1,350 MiB/s |
-| 256 KiB | open | 4,342 MiB/s | 152 MiB/s | 28.57x slower | 1,690 -> 1,351 MiB/s |
-| 1 MiB | seal | 1,856 MiB/s | 136 MiB/s | 13.63x slower | 1,095 -> 841 MiB/s |
-| 1 MiB | open | 1,943 MiB/s | 141 MiB/s | 13.75x slower | 1,108 -> 795 MiB/s |
+| 16 B | seal | 10 MiB/s | 8 MiB/s | 1.26x slower | 9 -> 8 MiB/s |
+| 16 B | open | 10 MiB/s | 8 MiB/s | 1.29x slower | 9 -> 8 MiB/s |
+| 64 B | seal | 39 MiB/s | 26 MiB/s | 1.50x slower | 35 -> 34 MiB/s |
+| 64 B | open | 38 MiB/s | 25 MiB/s | 1.49x slower | 34 -> 33 MiB/s |
+| 256 B | seal | 150 MiB/s | 87 MiB/s | 1.74x slower | 127 -> 125 MiB/s |
+| 256 B | open | 144 MiB/s | 86 MiB/s | 1.68x slower | 122 -> 123 MiB/s |
+| 1 KiB | seal | 528 MiB/s | 172 MiB/s | 3.07x slower | 429 -> 383 MiB/s |
+| 1 KiB | open | 516 MiB/s | 163 MiB/s | 3.16x slower | 421 -> 382 MiB/s |
+| 4 KiB | seal | 1,603 MiB/s | 223 MiB/s | 7.18x slower | 1,095 -> 1,093 MiB/s |
+| 4 KiB | open | 1,655 MiB/s | 222 MiB/s | 7.44x slower | 1,081 -> 1,085 MiB/s |
+| 16 KiB | seal | 3,404 MiB/s | 242 MiB/s | 14.08x slower | 1,687 -> 1,694 MiB/s |
+| 16 KiB | open | 3,400 MiB/s | 242 MiB/s | 14.06x slower | 1,675 -> 1,684 MiB/s |
+| 64 KiB | seal | 4,825 MiB/s | 247 MiB/s | 19.56x slower | 1,982 -> 1,984 MiB/s |
+| 64 KiB | open | 4,849 MiB/s | 248 MiB/s | 19.53x slower | 1,976 -> 1,994 MiB/s |
+| 256 KiB | seal | 5,306 MiB/s | 249 MiB/s | 21.29x slower | 2,074 -> 2,046 MiB/s |
+| 256 KiB | open | 5,340 MiB/s | 249 MiB/s | 21.43x slower | 2,082 -> 2,069 MiB/s |
+| 1 MiB | seal | 2,177 MiB/s | 225 MiB/s | 9.67x slower | 1,370 -> 1,252 MiB/s |
+| 1 MiB | open | 2,195 MiB/s | 223 MiB/s | 9.82x slower | 1,331 -> 1,271 MiB/s |
 
