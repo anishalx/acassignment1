@@ -1,0 +1,10 @@
+# CS6530 Assignment 1 -- Secure Data Protection using AES-GCM and ChaCha20-Poly1305
+#
+# Runtime dependency: the AEAD primitives only.  The subsystem itself
+# implements no cryptographic primitive (Section 3.2 puts that out of scope).
+cryptography>=42.0
+
+# Development / evidence generation.  Not needed to use the subsystem.
+pytest>=7.0          # runs the TR-1..TR-7 test suite
+matplotlib>=3.5      # renders the TR-8 charts; the benchmark degrades
+                     # gracefully to tables if it is absent

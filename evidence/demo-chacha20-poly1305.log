@@ -1,0 +1,395 @@
+==============================================================================
+ CS6530 Assignment 1 -- Secure Data Protection Subsystem
+ Testing Requirements TR-1 to TR-7
+ AEAD configuration: chacha20-poly1305
+==============================================================================
+  generated  : 2026-08-16 20:29:32
+  python     : 3.13.3
+  seed       : 0xc56530 (malicious actor is deterministic)
+
+==============================================================================
+ TR-1  Positive Baseline Test                            [chacha20-poly1305]
+==============================================================================
+  Objective : Demonstrate successful protection, transmission, verification and recovery of valid application records.
+  Procedure :
+              1. Establish a session over a pre-shared key.
+              2. Protect a series of application records of differing sizes.
+              3. Deliver each protected record to the receiver.
+              4. Confirm each recovered record equals the original, byte for byte.
+  Input     : Application records of 0, 17, 64, 1024 and 65536 bytes.
+  Expected  : All records are accepted and recovered exactly.
+------------------------------------------------------------------------------
+  > Session established
+      AEAD configuration     chacha20-poly1305
+      key (pre-shared)       a9577afb2261b4a3453079196a301f2e31e77f51fb1fff8d5786028b3dc962a5
+      session id             35bb0e52596ddee29536357bd673911c
+      nonce prefix           11205c4b
+  > Protecting and delivering records
+           0 B record        wire=    56 B  seq=0  -> ACCEPTED (0 B recovered)
+          17 B record        wire=    73 B  seq=1  -> ACCEPTED (17 B recovered)
+          64 B record        wire=   120 B  seq=2  -> ACCEPTED (64 B recovered)
+        1024 B record        wire=  1080 B  seq=3  -> ACCEPTED (1024 B recovered)
+       65536 B record        wire= 65592 B  seq=4  -> ACCEPTED (65536 B recovered)
+  > Detail of one protected record
+      application record (plaintext) (54 bytes)
+        0000  74 65 6c 65 6d 65 74 72 79 20 66 72 61 6d 65 3a  |telemetry frame:|
+        0010  20 73 65 6e 73 6f 72 3d 74 65 6d 70 20 76 61 6c  | sensor=temp val|
+        0020  75 65 3d 32 31 2e 35 43 20 74 73 3d 31 37 35 35  |ue=21.5C ts=1755|
+        0030  33 30 30 30 30 30                                |300000|
+      protected application record (110 bytes = 40 header + 54 ciphertext + 16 tag)
+        header : session=35bb0e52.. stream=1 seq=5 type=DATA flags=0x00 len=54 suite=0x02
+        aad    : 0102010035bb0e52596ddee29536357bd673911c0000000111205c4b000000000000000500000036
+        ct     : aa027184c3f9b7263501b931601739e1bf5dd6b7c55af7ab...
+        tag    : 58debbc50e2cc75d62922cdf221a81d3
+      recovered application record (54 bytes)
+        0000  74 65 6c 65 6d 65 74 72 79 20 66 72 61 6d 65 3a  |telemetry frame:|
+        0010  20 73 65 6e 73 6f 72 3d 74 65 6d 70 20 76 61 6c  | sensor=temp val|
+        0020  75 65 3d 32 31 2e 35 43 20 74 73 3d 31 37 35 35  |ue=21.5C ts=1755|
+        0030  33 30 30 30 30 30                                |300000|
+  > Confidentiality spot check (SR-1)
+      plaintext marker       CONFIDENTIAL-MARKER
+      marker present on wire False
+      record still recovers  True
+  = All 7 records delivered were accepted; recovered plaintext identical to the input in every case.
+  = Wire overhead is a constant 56 bytes (40 B header + 16 B tag) regardless of record size.
+  = The plaintext marker does not appear anywhere in the protected record.
+  [ok  ] every record recovered byte-for-byte
+  [ok  ] detailed record recovered
+  [ok  ] plaintext does not appear on the wire
+  [ok  ] no valid record was rejected
+  [ok  ] all 7 delivered records accepted
+------------------------------------------------------------------------------
+  OUTCOME   : PASS
+
+==============================================================================
+ TR-2  Ciphertext Integrity Test                         [chacha20-poly1305]
+==============================================================================
+  Objective : Demonstrate that modification of the protected application record by the malicious actor causes authentication verification to fail and the record to be rejected.
+  Procedure :
+              1. Sender protects an application record.
+              2. Malicious actor intercepts it in flight and flips one ciphertext bit.
+              3. Only the modified record is delivered to the receiver.
+              4. Repeat for every bit of an 8-byte record (exhaustive sweep).
+  Input     : A valid protected record with exactly one ciphertext bit inverted.
+  Expected  : AUTH_FAILED; no application record is released.
+------------------------------------------------------------------------------
+  > Single-bit modification of the ciphertext
+      original protected record (102 bytes = 40 header + 46 ciphertext + 16 tag)
+        header : session=860ec745.. stream=1 seq=0 type=DATA flags=0x00 len=46 suite=0x02
+        aad    : 01020100860ec7455a0208172ece9d1efbf8e89200000001f297011400000000000000000000002e
+        ct     : bdd8c29e8f98b202fc724561fa22bb78e336543e766f34f7...
+        tag    : 4bcb856fb262a62a38090f053f7b57b7
+      modification : offset 40: 0xbd -> 0xbc (was 0000002ebdd8c29e8f, now 0000002ebcd8c29e8f)
+      modified protected record (102 bytes = 40 header + 46 ciphertext + 16 tag)
+        header : session=860ec745.. stream=1 seq=0 type=DATA flags=0x00 len=46 suite=0x02
+        aad    : 01020100860ec7455a0208172ece9d1efbf8e89200000001f297011400000000000000000000002e
+        ct     : bcd8c29e8f98b202fc724561fa22bb78e336543e766f34f7...
+        tag    : 4bcb856fb262a62a38090f053f7b57b7
+      receiver verdict       REJECTED [AUTH_FAILED] AEAD tag verification failed
+      plaintext released     None
+  > Exhaustive single-bit sweep over an 8-byte record
+      modifications attempted 64
+      accepted               0
+      rejections by reason   {'AUTH_FAILED': 64}
+  > Truncation of the ciphertext body
+      receiver verdict       REJECTED [MALFORMED] frame carries 36 bytes after the header but payload_len 24 implies 40
+  = A single inverted ciphertext bit is rejected with AUTH_FAILED; no plaintext is returned.
+  = All 64 single-bit ciphertext modifications were rejected ({'AUTH_FAILED': 64}); none was accepted.
+  = Truncating the body is caught earlier still, by framing validation (MALFORMED), because payload_len is authenticated.
+  [ok  ] single-bit ciphertext modification rejected as AUTH_FAILED
+  [ok  ] no plaintext released
+  [ok  ] no modification in the exhaustive sweep was accepted
+  [ok  ] every sweep rejection was AUTH_FAILED
+  [ok  ] truncation rejected
+------------------------------------------------------------------------------
+  OUTCOME   : PASS
+
+==============================================================================
+ TR-3  Authentication Tag Test                           [chacha20-poly1305]
+==============================================================================
+  Objective : Demonstrate that modification of the authentication tag causes authentication verification to fail and the record to be rejected.
+  Procedure :
+              1. Sender protects an application record.
+              2. Malicious actor modifies only the 16-byte tag, leaving header and ciphertext untouched.
+              3. Deliver to the receiver.
+              4. Sweep all 128 tag bits, then attempt 256 random tag forgeries.
+  Input     : A valid protected record with a modified authentication tag.
+  Expected  : AUTH_FAILED; no application record is released.
+------------------------------------------------------------------------------
+  > Single-bit modification of the tag
+      original tag           f3cd27bd22cf953ef6717953d2ca67a2
+      modified tag           f2cd27bd22cf953ef6717953d2ca67a2
+      header+ciphertext unchanged True
+      receiver verdict       REJECTED [AUTH_FAILED] AEAD tag verification failed
+  > Exhaustive sweep over all 128 tag bits
+      tag bits flipped       128
+      accepted               0
+      rejections by reason   {'AUTH_FAILED': 128}
+  > Random tag forgery attempts
+      forgery attempts       256
+      accepted               0
+      per-attempt success probability 2^-128
+  > All-zero and truncated tags
+      all-zero tag           REJECTED [AUTH_FAILED] AEAD tag verification failed
+      truncated tag          REJECTED [MALFORMED] frame carries 21 bytes after the header but payload_len 9 implies 25
+  = Inverting one tag bit is rejected with AUTH_FAILED, with the header and ciphertext left byte-identical.
+  = All 128 single-bit tag modifications were rejected.
+  = All 256 random 128-bit tag forgeries were rejected.
+  = A truncated tag is rejected as MALFORMED: the tag length is fixed at 16 bytes, so short tags never reach the AEAD.
+  [ok  ] tag bit flip rejected
+  [ok  ] no tag-bit modification accepted
+  [ok  ] all tag sweeps AUTH_FAILED
+  [ok  ] no random tag forgery accepted
+  [ok  ] zero tag rejected
+  [ok  ] truncated tag rejected
+------------------------------------------------------------------------------
+  OUTCOME   : PASS
+
+==============================================================================
+ TR-4  Associated Data (AAD) Test                        [chacha20-poly1305]
+==============================================================================
+  Objective : Demonstrate that modification of the Associated Data causes authentication verification to fail and the record to be rejected.
+  Procedure :
+              1. Sender protects a DATA record on stream 1.
+              2. Malicious actor rewrites authenticated header fields: record type, flags, stream id, session id, suite id, declared length.
+              3. Deliver each variant to the receiver.
+              4. Sweep all 320 header bits and attribute each rejection to a field.
+  Input     : A valid protected record with modified header (AAD) fields.
+  Expected  : Every variant is rejected; semantic fields fail authentication, framing and binding fields are caught by earlier checks.
+------------------------------------------------------------------------------
+  > The AAD is the 40-byte record header
+      header / AAD           01020100d34cacfb4bac643c0791a250c9518a4d00000001202fd4ea000000000000000000000020
+      decoded                session=d34cacfb.. stream=1 seq=0 type=DATA flags=0x00 len=32 suite=0x02
+  > Semantic modifications of individual AAD fields
+      record_type DATA -> CLOSE REJECTED [AUTH_FAILED] AEAD tag verification failed
+      flags -> END_OF_STREAM REJECTED [AUTH_FAILED] AEAD tag verification failed
+      stream_id 1 -> 7       REJECTED [AUTH_FAILED] AEAD tag verification failed
+      nonce_prefix -> deadbeef REJECTED [AUTH_FAILED] AEAD tag verification failed
+      seq -> 5000            REJECTED [AUTH_FAILED] AEAD tag verification failed
+      session_id -> random   REJECTED [SESSION_MISMATCH] record belongs to session 517159bc.., receiver is pinned to d34cacfb..
+      suite_id -> 0x01       REJECTED [SUITE_MISMATCH] record declares suite 0x01, receiver is configured for chacha20-poly1305 (0x02)
+      payload_len -> 1       REJECTED [MALFORMED] frame carries 48 bytes after the header but payload_len 1 implies 17
+  > Exhaustive sweep over all 320 header bits
+      header bits flipped    320
+      accepted               0
+        version              {'MALFORMED': 8}
+        suite_id             {'SUITE_MISMATCH': 8}
+        record_type          {'AUTH_FAILED': 8}
+        flags                {'AUTH_FAILED': 8}
+        session_id           {'SESSION_MISMATCH': 128}
+        stream_id            {'AUTH_FAILED': 32}
+        nonce_prefix         {'AUTH_FAILED': 32}
+        seq                  {'AUTH_FAILED': 64}
+        payload_len          {'MALFORMED': 32}
+  = The AAD is the complete 40-byte header, transmitted in the clear and authenticated in full.
+  = Modifying record_type, flags, stream_id, nonce_prefix or seq is rejected as AUTH_FAILED -- the cryptographic binding.
+  = Modifying suite_id, session_id or payload_len is rejected earlier, by the configuration binding, the session pin and framing validation respectively -- defence in depth over the same authenticated bytes.
+  = All 320 single-bit AAD modifications were rejected.
+  [ok  ] no header modification accepted
+  [ok  ] every semantic AAD modification rejected
+  [ok  ] record_type modifications fail authentication
+  [ok  ] flags modifications fail authentication
+  [ok  ] stream_id modifications fail authentication
+  [ok  ] nonce_prefix modifications fail authentication
+  [ok  ] seq modifications fail authentication
+  [ok  ] suite_id modifications hit the configuration binding
+  [ok  ] session_id modifications hit the session pin
+  [ok  ] payload_len modifications hit framing validation
+------------------------------------------------------------------------------
+  OUTCOME   : PASS
+
+==============================================================================
+ TR-5  Replay Test                                       [chacha20-poly1305]
+==============================================================================
+  Objective : Demonstrate that replay of a previously accepted protected application record is detected and handled per the documented replay handling strategy.
+  Procedure :
+              1. Deliver a record and confirm acceptance.
+              2. Malicious actor re-sends the identical record.
+              3. Confirm the AEAD alone would accept it, but the subsystem does not.
+              4. Exercise out-of-order delivery, stale records and window poisoning.
+  Input     : A byte-identical copy of an already-accepted protected record.
+  Expected  : REPLAY_DETECTED; no application record is released.
+------------------------------------------------------------------------------
+  > Strategy in force
+      mechanism              sliding bitmap window over authenticated seq
+      window size            64 records
+      scope                  per (session_id, stream_id)
+      window update          only after successful authentication
+  > Accept a record, then replay it
+      first delivery         ACCEPTED (33 B recovered)
+      replay is byte-identical True
+      replayed delivery      REJECTED [REPLAY_DETECTED] seq 0 already accepted on stream 1
+      plaintext released     None
+  > Why the AEAD alone cannot detect this
+      raw AEAD decryption of replay succeeds, recovers 33 bytes
+      subsystem verdict      REPLAY_DETECTED
+  > Replay flood
+      replays attempted      100
+      accepted               0
+  > Out-of-order delivery is tolerated, duplicates are not
+      delivery order         [3, 0, 7, 1, 5, 2, 6, 4]
+      all accepted           True
+      duplicate of seq 3     REJECTED [REPLAY_DETECTED] seq 3 already accepted on stream 1
+  > Records below the window are refused as stale
+      window state           window(highest=19, size=8, accepted=9, bits[newest..oldest]=10000000)
+      seq 12 (oldest in window) ACCEPTED (9 B recovered)
+      seq 11 (one below window) REJECTED [STALE_RECORD] seq 11 falls outside the 8-record window below highest accepted seq 19
+  > A forged sequence number cannot poison the window
+      forged seq             9223372036854775808
+      verdict                REJECTED [AUTH_FAILED] AEAD tag verification failed
+      window highest before  0
+      window highest after   0
+      channel still functional True
+  > Renumbering a replay to evade the window
+      renumbered replay      REJECTED [AUTH_FAILED] AEAD tag verification failed
+  = A byte-identical replay is rejected as REPLAY_DETECTED, even though its authentication tag verifies correctly.
+  = All 100 replays in a flood were rejected.
+  = Out-of-order delivery within the window is accepted; a duplicate of an out-of-order record is still detected.
+  = A record below the window is rejected as STALE_RECORD, the conservative choice where history is no longer retained.
+  = A forged high sequence number leaves the window untouched, because the window is committed only after authentication succeeds.
+  = Renumbering a replayed record to evade the window fails with AUTH_FAILED: seq is authenticated and feeds the nonce.
+  [ok  ] original record accepted
+  [ok  ] replay detected
+  [ok  ] no plaintext released on replay
+  [ok  ] raw AEAD would have accepted the replay
+  [ok  ] no replay in the flood was accepted
+  [ok  ] out-of-order delivery accepted
+  [ok  ] out-of-order duplicate detected
+  [ok  ] oldest in-window record accepted
+  [ok  ] below-window record refused
+  [ok  ] forged sequence number did not move the window
+  [ok  ] channel functional after poisoning attempt
+  [ok  ] renumbered replay rejected
+------------------------------------------------------------------------------
+  OUTCOME   : PASS
+
+==============================================================================
+ TR-6  Wrong-Key Test                                    [chacha20-poly1305]
+==============================================================================
+  Objective : Demonstrate that use of an incorrect cryptographic key results in authentication verification failure and rejection of the record.
+  Procedure :
+              1. Sender protects records under key K.
+              2. A receiver holding key K' != K attempts verification.
+              3. Repeat with a key differing from K in a single bit.
+              4. Malicious actor forges a structurally perfect record under its own key.
+  Input     : Valid protected records verified under an incorrect key.
+  Expected  : AUTH_FAILED in every case; no application record is released.
+------------------------------------------------------------------------------
+  > Keys in play
+      correct key K          acf8b41b0387aa32eb10c31df2fb4541f4e2586d1fdece6e8de23d81a03f36d0
+      incorrect key K'       8dcb347562624550efdfa5242afc9b0f1a95d994dfa19368f39897c3e46556f4
+      hamming distance       125
+  > Same record, two receivers
+      receiver with key K    ACCEPTED (38 B recovered)
+      receiver with key K'   REJECTED [AUTH_FAILED] AEAD tag verification failed
+      plaintext released by K' None
+  > Batch under the wrong key
+      records delivered      100
+      accepted               0
+  > Keys differing in a single bit (all 256 positions)
+      single-bit key variants 256
+      accepted               0
+  > Attacker forges a record under a key of its own
+      forged session id matches True
+      forged stream id matches True
+      forged nonce prefix matches True
+      forged seq (fresh, not a replay) 358
+      forged record (83 bytes = 40 header + 27 ciphertext + 16 tag)
+        header : session=8b7f9197.. stream=1 seq=358 type=DATA flags=0x00 len=27 suite=0x02
+        aad    : 010201008b7f91971ca45364fe6e1cfd73336df700000001f4efe6cf00000000000001660000001b
+        ct     : 4aaec899f2e37d4ded95cacbf3304a808af864847f75a59f...
+        tag    : 8972c0b706a0d3445d538ed148a7c336
+      receiver verdict       REJECTED [AUTH_FAILED] AEAD tag verification failed
+  = A genuine record verified under key K' is rejected with AUTH_FAILED; the same record under K is accepted.
+  = All 100 records under the wrong key were rejected.
+  = All 256 keys differing from K in a single bit rejected every record: there is no partial-match behaviour.
+  = A forged record matching the genuine session, stream, nonce prefix and framing is still rejected with AUTH_FAILED.
+  [ok  ] correct key recovers the record
+  [ok  ] wrong key rejected as AUTH_FAILED
+  [ok  ] no plaintext released under the wrong key
+  [ok  ] no record accepted under the wrong key
+  [ok  ] no single-bit key variant accepted
+  [ok  ] attacker forgery rejected
+------------------------------------------------------------------------------
+  OUTCOME   : PASS
+
+==============================================================================
+ TR-7  Nonce Management Verification                     [chacha20-poly1305]
+==============================================================================
+  Objective : Demonstrate that the nonce management approach satisfies the requirements of the AEAD configuration, with evidence that nonce reuse does not occur during normal operation.
+  Procedure :
+              1. Protect 10,000 application records under a single key.
+              2. Reconstruct each nonce from the record's own header and collect it.
+              3. Check uniqueness, monotonicity and structure directly.
+              4. Simulate restarts under the same key, then exhaust the budget.
+  Input     : 10,000 application records under one key and session.
+  Expected  : All nonces distinct; sender fails closed at the record budget.
+------------------------------------------------------------------------------
+  > Construction under test
+      nonce length           96 bits (12 bytes)
+      layout                 32-bit random session prefix || 64-bit BE counter
+      reference              NIST SP 800-38D s8.2.1 deterministic construction
+      session prefix         66449fcc
+      record budget          16,777,216 records
+  > Protecting and verifying 10,000 records under one key
+      records protected      10,000
+      records accepted       10,000
+      nonces collected       10,000
+      distinct nonces        10,000
+      duplicate nonces       0
+      distinct prefixes      1
+      seq strictly increasing True
+      seq range              0 .. 9999
+      elapsed                0.172 s
+      first nonce            66449fcc0000000000000000
+      last nonce             66449fcc000000000000270f
+  > Restarting under the same key does not restart the nonce space
+      simulated restarts     200
+      counter restarts at 0 each time True
+      distinct session prefixes 200
+      distinct first nonces  200
+  > Sender fails closed when the record budget is exhausted
+      budget                 64
+      records emitted        64
+      error raised           NonceExhaustedError
+      message                record budget of 64 exhausted for this key/session (prefix=7b411305); rekey before sending further records
+      counter after 5 retries 64
+      counter did not advance True
+  > Why a counter rather than random nonces
+      random-nonce collision p at 10,000 6.310e-22
+      random-nonce collision p at 2^24 (budget) 1.776e-15
+      random-nonce collision p at 2^32 (NIST cap) 1.164e-10
+      random-nonce collision p at 2^49 8.647e-01
+      counter collision p (any q < 2^64) 0
+  = 10,000 records were protected under one key; all 10,000 nonces were distinct, with zero duplicates.
+  = Sequence numbers were strictly increasing with no gaps or repeats, so uniqueness is structural rather than probabilistic.
+  = All 10,000 records verified at the receiver, confirming sender and receiver derive the same nonce.
+  = Across 200 simulated restarts under one key the counter restarted at 0 each time, yet all 200 first-record nonces were distinct, because the 32-bit session prefix is redrawn.
+  = At the record budget the sender raised NonceExhaustedError and emitted nothing further; the counter did not advance on retry.
+  [ok  ] all 10,000 nonces distinct
+  [ok  ] sequence numbers strictly increasing with no gaps
+  [ok  ] one session prefix throughout the session
+  [ok  ] every record verified at the receiver
+  [ok  ] each restart drew a fresh prefix
+  [ok  ] no nonce repeated across restarts
+  [ok  ] budget exhaustion raised NonceExhaustedError
+  [ok  ] no record emitted past the budget
+  [ok  ] counter did not advance after exhaustion
+------------------------------------------------------------------------------
+  OUTCOME   : PASS
+
+==============================================================================
+ SUMMARY 
+==============================================================================
+  TR     Title                              Configuration        Outcome
+------------------------------------------------------------------------------
+  TR-1   Positive Baseline Test             chacha20-poly1305    PASS
+  TR-2   Ciphertext Integrity Test          chacha20-poly1305    PASS
+  TR-3   Authentication Tag Test            chacha20-poly1305    PASS
+  TR-4   Associated Data (AAD) Test         chacha20-poly1305    PASS
+  TR-5   Replay Test                        chacha20-poly1305    PASS
+  TR-6   Wrong-Key Test                     chacha20-poly1305    PASS
+  TR-7   Nonce Management Verification      chacha20-poly1305    PASS
+------------------------------------------------------------------------------
+  7/7 demonstrations passed
+==============================================================================

@@ -1,0 +1,16 @@
+[project]
+name = "srp"
+version = "1.0.0"
+description = "Secure data protection subsystem using AES-GCM and ChaCha20-Poly1305 (CS6530 Assignment 1)"
+requires-python = ">=3.10"
+dependencies = ["cryptography>=42.0"]
+
+[tool.pytest.ini_options]
+# Lets the test suite import `srp` straight from the repository root, so no
+# installation step is needed to run the tests.
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: tests that process a large number of records (TR-7 volume run)",
+]
