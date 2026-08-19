@@ -16,6 +16,22 @@ window and code path. Only the primitive invoked differs, which is what makes
 FR-9 (configuration equivalence) a property of the design rather than something
 that had to be engineered separately.
 
+> ### Build status: incomplete
+>
+> The receiving side of the subsystem is not implemented yet.
+> `srp/receiver.py`, `srp/replay.py` and `srp/adversary.py` are specification
+> stubs, and the TR-2 to TR-6 test modules have not been written. They are
+> Member 2's work package — see **[HANDOFF.md](HANDOFF.md)**.
+>
+> Consequences while that is outstanding: `pytest` reports 38 passed and 41
+> skipped; `python run_all.py` runs the test suite and the nonce analysis and
+> skips the stages that need a receiver; and the transcripts and measurements
+> already in `evidence/`, together with the TR-2 to TR-6 sections of the
+> report, describe a run that the current tree cannot reproduce. They are to
+> be regenerated once the receiving side exists.
+>
+> The sections below describe the finished subsystem.
+
 ---
 
 ## 1. Software requirements
