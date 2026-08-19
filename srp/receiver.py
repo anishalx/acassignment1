@@ -1,86 +1,43 @@
 """Receiving side: verify and recover application records (FR-6, FR-7, SR-6).
 
-    OWNER: MEMBER 2 -- NOT YET IMPLEMENTED
+The receiver is the part of the subsystem an attacker actually gets to talk to,
+so its contract is deliberately narrow: one method, one immutable verdict, and
+one invariant that holds on every path.
 
-This module is a specification stub.  It fixes the *interface* the rest of the
-subsystem is already written against; the verification pipeline and its
-security properties are Member 2's to design, build and justify.
+    **A plaintext is present if and only if the record authenticated.**
 
-What the assignment requires of this module
--------------------------------------------
-
-FR-6  Recover the original application record from a protected record, using
-      the same AEAD configuration and the correct key.
-FR-7  Handle authentication failure: a record that fails verification shall be
-      rejected and reported, and no unverified data shall be released.
-SR-6  Authentication failures shall be detected and handled safely.
-
-The receiver is the only part of the subsystem an attacker gets to talk to, so
-every negative Testing Requirement lands here:
-
-    TR-2  ciphertext modified in flight   -> rejected
-    TR-3  authentication tag modified     -> rejected
-    TR-4  associated data modified        -> rejected
-    TR-5  record replayed                 -> rejected
-    TR-6  wrong key                       -> rejected
-
-Design decisions that are yours to make and to defend in the report
--------------------------------------------------------------------
-
-1.  The output contract.  ``Verdict`` returns a result rather than raising.
-    Work out the one invariant that must hold on *every* path through
-    ``receive`` relating ``status`` to ``plaintext``, then enforce it in code
-    rather than leaving it as a comment -- a failure path that forgets to clear
-    an output buffer is the classic way a subsystem like this leaks.
-2.  Check ordering.  Framing, configuration binding, session binding, replay
-    and the AEAD open all have to happen somewhere.  Decide the order and be
-    able to say, for each check before the AEAD, whether it could ever cause a
-    record to be *accepted*.
-3.  Replay check versus replay commit.  ``ReplayGuard`` deliberately splits
-    these.  Decide where each belongs relative to the AEAD open, and work out
-    the concrete attack that the wrong choice enables.  (Hint: what happens if
-    an unauthenticated header can move the receiver's state?)
-4.  How much to tell the caller.  TR-2, TR-3, TR-4 and TR-6 all end in a failed
-    tag check.  Decide whether the rejection reason should distinguish them,
-    and justify the answer in terms of what an attacker learns.
-5.  The nonce.  The receiver is never sent the nonce; it has to reconstruct it.
-    See ``srp/nonce.py`` for how, and note what that means for TR-4.
-
-Integration contract -- do not change these names or signatures
----------------------------------------------------------------
-
-``srp/session.py`` constructs ``Receiver(suite, expected_session_id=...,
-replay_window=..., max_streams=...)`` and calls ``.receive(wire) -> Verdict``.
-``demo/``, ``bench/`` and the TR-1/TR-7 tests read ``.stats``, ``.suite``,
-``.replay_guard`` and ``.window_for_stream``.  Delete ``MEMBER2_STUB`` when the
-module is real -- the test suite keys its "pending" skips off it.
+That invariant is asserted in code (:meth:`Verdict.__post_init__`) rather than
+left as a comment, because "the failure path forgot to clear the output buffer"
+is the classic way this kind of subsystem leaks.  Returning a verdict object
+instead of raising also means the caller cannot accidentally use a
+partly-populated result: there is nothing to use unless ``accepted`` is true.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .errors import RecordStatus, RejectReason
-from .header import RecordHeader
-from .replay import DEFAULT_MAX_STREAMS, DEFAULT_WINDOW_SIZE
-from .suites import AeadSuite
-
-#: Sentinel: this module is still a stub.  Remove it once implemented.
-MEMBER2_STUB = True
-
-_TODO = (
-    "srp.receiver is MEMBER 2's deliverable and is not implemented yet. "
-    "See HANDOFF.md."
+from .errors import (
+    AuthenticationFailure,
+    ConfigurationError,
+    MalformedRecordError,
+    RecordStatus,
+    RejectReason,
 )
+from .header import HEADER_LEN, RecordHeader, parse_record
+from .nonce import derive_nonce
+from .replay import (
+    DEFAULT_MAX_STREAMS,
+    DEFAULT_WINDOW_SIZE,
+    ReplayGuard,
+    ReplayVerdict,
+)
+from .suites import AeadSuite
 
 
 @dataclass(frozen=True, slots=True)
 class Verdict:
-    """Outcome of processing one protected application record.
-
-    Immutable and self-validating by design: the caller must not be able to use
-    a partly-populated result.
-    """
+    """Outcome of processing one protected application record."""
 
     status: RecordStatus
     reason: RejectReason | None = None
@@ -89,11 +46,17 @@ class Verdict:
     detail: str = ""
 
     def __post_init__(self) -> None:
-        # TODO(Member 2): enforce the accepted/rejected invariant here, raising
-        # ConfigurationError on any inconsistent combination of fields.  This is
-        # the fail-closed guarantee FR-7 and SR-6 ask for, so it belongs in
-        # executable code rather than in a docstring.
-        raise NotImplementedError(_TODO)
+        accepted = self.status is RecordStatus.ACCEPTED
+        if accepted and self.plaintext is None:
+            raise ConfigurationError("ACCEPTED verdict without plaintext")
+        if not accepted and self.plaintext is not None:
+            # The invariant that matters (FR-7, SR-6): a rejected record must
+            # never carry recovered application data out of the receiver.
+            raise ConfigurationError("rejected verdict must not carry plaintext")
+        if accepted and self.reason is not None:
+            raise ConfigurationError("ACCEPTED verdict must not carry a reject reason")
+        if not accepted and self.reason is None:
+            raise ConfigurationError("rejected verdict must state a reason")
 
     @property
     def accepted(self) -> bool:
@@ -105,7 +68,25 @@ class Verdict:
 
     def describe(self) -> str:
         """One-line description for logs and test evidence."""
-        raise NotImplementedError(_TODO)
+        if self.accepted:
+            assert self.plaintext is not None
+            return f"ACCEPTED ({len(self.plaintext)} B recovered)"
+        assert self.reason is not None
+        return f"REJECTED [{self.reason.value}] {self.detail}".rstrip()
+
+
+def _accept(plaintext: bytes, header: RecordHeader) -> Verdict:
+    return Verdict(
+        status=RecordStatus.ACCEPTED, plaintext=plaintext, header=header
+    )
+
+
+def _reject(
+    reason: RejectReason, detail: str = "", header: RecordHeader | None = None
+) -> Verdict:
+    return Verdict(
+        status=RecordStatus.REJECTED, reason=reason, detail=detail, header=header
+    )
 
 
 @dataclass
@@ -118,13 +99,18 @@ class ReceiverStats:
 
     @property
     def rejected_total(self) -> int:
-        raise NotImplementedError(_TODO)
+        return sum(self.rejected.values())
 
     def note_rejection(self, reason: RejectReason) -> None:
-        raise NotImplementedError(_TODO)
+        self.rejected[reason.value] = self.rejected.get(reason.value, 0) + 1
 
     def as_dict(self) -> dict:
-        raise NotImplementedError(_TODO)
+        return {
+            "accepted": self.accepted,
+            "plaintext_bytes": self.plaintext_bytes,
+            "rejected_total": self.rejected_total,
+            "rejected": dict(self.rejected),
+        }
 
 
 class Receiver:
@@ -133,12 +119,14 @@ class Receiver:
     Parameters
     ----------
     suite:
-        AEAD configuration bound to the pre-shared key.
+        AEAD configuration bound to the pre-shared key.  A record whose header
+        names a different configuration is rejected before any crypto runs.
     expected_session_id:
-        If given, pins the receiver to one key epoch.  ``None`` accepts any
-        session under this key.
+        If given, the receiver is pinned to one key epoch and rejects records
+        from any other session.  Leave as ``None`` to accept any session under
+        this key (each still gets its own replay window).
     replay_window:
-        Width of the anti-replay history, in records.
+        Width of the anti-replay window, in records.
     max_streams:
         Cap on concurrently tracked streams.
     """
@@ -151,17 +139,11 @@ class Receiver:
         replay_window: int = DEFAULT_WINDOW_SIZE,
         max_streams: int = DEFAULT_MAX_STREAMS,
     ) -> None:
-        # The stub stores its configuration and nothing else, so that
-        # ``create_channel`` still works and the sender-side tests (TR-1, TR-7)
-        # can run while this module is being written.  You will want to set up
-        # the replay guard here too -- and think about whether the window size
-        # should be validated now or on the first record.
         self._suite = suite
         self._expected_session_id = (
             bytes(expected_session_id) if expected_session_id is not None else None
         )
-        self._replay_window = replay_window
-        self._max_streams = max_streams
+        self._replay = ReplayGuard(replay_window, max_streams=max_streams)
         self._stats = ReceiverStats()
 
     # -- the one entry point ----------------------------------------------
@@ -169,16 +151,128 @@ class Receiver:
     def receive(self, wire: bytes) -> Verdict:
         """Process one protected application record.
 
-        Must never raise on attacker-supplied input: malformed frames, wrong
-        suite, wrong session, replays and failed tags are all *verdicts*, not
-        exceptions.  Exceptions are reserved for programming and configuration
-        errors on the local side.
+        Checks run cheapest-first, but note that the ordering is a performance
+        decision only: every check before the AEAD is a *rejection* filter that
+        can throw a record away, and none of them can cause one to be accepted.
+        Acceptance requires the tag to verify, always.
+
+        One consequence of that ordering is worth stating, because it shapes how
+        the negative tests must be written.  If an attacker modifies a record the
+        receiver has *already accepted* and sends it back, the replay window
+        rejects it as ``REPLAY_DETECTED`` before the tag is ever checked -- the
+        modification is real but never reached.  The record is rejected either
+        way, and the invariant this subsystem guarantees is rejection, not any
+        particular reason for it.  But to demonstrate *authentication* failure
+        specifically (TR-2, TR-3, TR-4, TR-6), the malicious actor has to
+        intercept a record **in flight**: modify it and deliver only the modified
+        copy, so its sequence number is still fresh when the tag is checked.
+        That is also the more realistic on-path attacker model, since a real
+        attacker who can rewrite a record can equally well suppress the original.
         """
-        raise NotImplementedError(_TODO)
+        # 1. Framing.  Nothing here is trusted; this only establishes that the
+        #    bytes can be interpreted at all.
+        try:
+            record = parse_record(wire)
+        except MalformedRecordError as exc:
+            return self._record_rejection(RejectReason.MALFORMED, str(exc))
+
+        header = record.header
+
+        # 2. Configuration binding.  Rejecting a cross-suite record here saves a
+        #    pointless decryption; the AAD would catch it regardless, since
+        #    suite_id is authenticated.
+        if header.suite_id != self._suite.suite_id:
+            return self._record_rejection(
+                RejectReason.SUITE_MISMATCH,
+                f"record declares suite 0x{header.suite_id:02x}, receiver is "
+                f"configured for {self._suite.name} (0x{self._suite.suite_id:02x})",
+                header,
+            )
+
+        # 3. Session binding, when pinned.  Same reasoning: defence in depth
+        #    over an already-authenticated field.
+        if (
+            self._expected_session_id is not None
+            and header.session_id != self._expected_session_id
+        ):
+            return self._record_rejection(
+                RejectReason.SESSION_MISMATCH,
+                f"record belongs to session {header.session_id.hex()[:8]}.., "
+                f"receiver is pinned to {self._expected_session_id.hex()[:8]}..",
+                header,
+            )
+
+        # 4. Replay pre-check.  Read-only: an attacker-supplied sequence number
+        #    can cause a rejection here but can never alter window state.
+        stream_key = (header.session_id, header.stream_id)
+        verdict = self._replay.check(stream_key, header.seq)
+        if verdict is ReplayVerdict.DUPLICATE:
+            return self._record_rejection(
+                RejectReason.REPLAY_DETECTED,
+                f"seq {header.seq} already accepted on stream {header.stream_id}",
+                header,
+            )
+        if verdict is ReplayVerdict.TOO_OLD:
+            window = self._replay.window_for(stream_key)
+            highest = window.highest_seq if window else -1
+            return self._record_rejection(
+                RejectReason.STALE_RECORD,
+                f"seq {header.seq} falls outside the {self._replay.window_size}-record "
+                f"window below highest accepted seq {highest}",
+                header,
+            )
+        if verdict is ReplayVerdict.INVALID:  # pragma: no cover - parser bounds seq
+            return self._record_rejection(
+                RejectReason.MALFORMED, f"seq {header.seq} out of range", header
+            )
+
+        # 5. Authentication and decryption.  This is the only step that can
+        #    produce a plaintext, and it covers the ciphertext, the tag, the
+        #    entire header (as AAD) and, through the derived nonce, the record's
+        #    position in the stream.
+        nonce = derive_nonce(header.nonce_prefix, header.seq)
+        try:
+            plaintext = self._suite.open(nonce, record.ciphertext_and_tag, header.aad())
+        except AuthenticationFailure as exc:
+            # Covers TR-2 (ciphertext edited), TR-3 (tag edited), TR-4 (AAD
+            # edited) and TR-6 (wrong key).  They are deliberately
+            # indistinguishable to the caller: reporting which one failed would
+            # hand an attacker a decryption oracle.
+            return self._record_rejection(RejectReason.AUTH_FAILED, str(exc), header)
+
+        # Length-preserving AEADs, so this should be unreachable; assert rather
+        # than trust, since a mismatch would mean the framing and the plaintext
+        # disagree about the record.
+        if len(plaintext) != header.payload_len:  # pragma: no cover - defensive
+            return self._record_rejection(
+                RejectReason.MALFORMED,
+                f"recovered {len(plaintext)} bytes but header declared "
+                f"{header.payload_len}",
+                header,
+            )
+
+        # 6. Commit to the replay window.  Only now, with the record proven
+        #    genuine, is attacker-influenced state allowed to move.
+        self._replay.commit(stream_key, header.seq)
+
+        self._stats.accepted += 1
+        self._stats.plaintext_bytes += len(plaintext)
+        return _accept(plaintext, header)
 
     def receive_all(self, wires) -> list[Verdict]:
         """Process a sequence of records, returning a verdict for each."""
-        raise NotImplementedError(_TODO)
+        return [self.receive(w) for w in wires]
+
+    # -- helpers -----------------------------------------------------------
+
+    def _record_rejection(
+        self,
+        reason: RejectReason,
+        detail: str = "",
+        header: RecordHeader | None = None,
+    ) -> Verdict:
+        self._stats.note_rejection(reason)
+        return _reject(reason, detail, header)
 
     # -- introspection -----------------------------------------------------
 
@@ -191,12 +285,20 @@ class Receiver:
         return self._stats
 
     @property
-    def replay_guard(self):
-        """The replay guard, exposed so TR-5 can inspect state."""
-        raise NotImplementedError(_TODO)
+    def replay_guard(self) -> ReplayGuard:
+        """The replay guard, exposed so TR-5 can inspect window state."""
+        return self._replay
 
     def window_for_stream(self, session_id: bytes, stream_id: int):
-        raise NotImplementedError(_TODO)
+        return self._replay.window_for((bytes(session_id), stream_id))
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        pinned = (
+            self._expected_session_id.hex()[:8] + ".."
+            if self._expected_session_id
+            else "any"
+        )
+        return f"<Receiver suite={self._suite.name} session={pinned}>"
 
 
 __all__ = ["Receiver", "ReceiverStats", "Verdict"]

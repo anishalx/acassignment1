@@ -30,23 +30,6 @@ ROOT = Path(__file__).resolve().parent
 EVIDENCE_DIR = ROOT / "evidence"
 
 
-def member2_pending() -> bool:
-    """Whether the receiver/replay/adversary modules are still stubs.
-
-    Those three are Member 2's deliverable (see HANDOFF.md).  Until they exist,
-    every stage that needs a receiver -- the demonstrations, the network demo,
-    the TR-8 recover measurements -- cannot run, so we say so once and skip
-    them rather than emitting five tracebacks.
-    """
-    sys.path.insert(0, str(ROOT))
-    from srp import adversary, receiver, replay
-
-    return any(
-        getattr(module, "MEMBER2_STUB", False)
-        for module in (receiver, replay, adversary)
-    )
-
-
 def run_stage(name: str, command: list[str], *, echo: bool = True) -> tuple[bool, float]:
     print()
     print("#" * 78)
@@ -73,33 +56,20 @@ def main(argv: list[str] | None = None) -> int:
     py = sys.executable
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
-    pending = member2_pending()
-    if pending:
-        print("=" * 78)
-        print(" INCOMPLETE BUILD: srp/receiver.py, srp/replay.py and srp/adversary.py")
-        print(" are specification stubs awaiting Member 2 (see HANDOFF.md).")
-        print()
-        print(" Running only the stages that do not need a receiver.  The")
-        print(" demonstrations, the network demo and the TR-8 measurements will")
-        print(" run again as soon as those three modules are implemented; no")
-        print(" change to this script is needed.")
-        print("=" * 78)
-
     stages: list[tuple[str, list[str]]] = []
     if not args.skip_tests:
         stages.append(("Automated test suite (TR-1..TR-7, both configurations)",
                        [py, "-m", "pytest", "-q"]))
-    if not pending:
-        stages.append((
-            "Demonstration transcripts (TR-1..TR-7)",
-            [py, "-m", "demo.run_demo", "--quiet",
-             "--records", "2000" if args.quick else "10000"],
-        ))
-        stages.append(("Network demonstration (sender / actor / receiver over TCP)",
-                       [py, "-m", "demo.run_network_demo"]))
+    stages.append((
+        "Demonstration transcripts (TR-1..TR-7)",
+        [py, "-m", "demo.run_demo", "--quiet",
+         "--records", "2000" if args.quick else "10000"],
+    ))
+    stages.append(("Network demonstration (sender / actor / receiver over TCP)",
+                   [py, "-m", "demo.run_network_demo"]))
     stages.append(("Nonce management analysis (TR-7 supporting material)",
                    [py, "-m", "bench.nonce_analysis"]))
-    if not args.skip_bench and not pending:
+    if not args.skip_bench:
         perf = [py, "-m", "bench.perf"]
         if args.quick:
             perf.append("--quick")
