@@ -33,8 +33,8 @@ repeat, what metadata is bound into the authentication tag, how replays are
 detected, and how the receiver behaves when verification fails.
 
 **Headline results.** All eight Testing Requirements pass under both AEAD
-configurations. The automated suite is 168 tests, of which 78 run against
-AES-GCM and 78 against ChaCha20-Poly1305 (the remaining 12 compare the two
+configurations. The automated suite is 205 tests, of which 96 run against
+AES-GCM and 96 against ChaCha20-Poly1305 (the remaining 13 compare the two
 directly). Every negative test starts from a genuine record produced by the real
 sender and makes the smallest possible change to it; across the exhaustive
 single-bit sweeps — 64 ciphertext bits, 128 tag bits, 320 header bits, and 256
@@ -428,7 +428,7 @@ accept legitimate records afterwards.
 
 | **Outcome** | **PASS** — AES-GCM and ChaCha20-Poly1305 |
 |---|---|
-| **Supporting Evidence** | `evidence/demo-*.log` § TR-2; `tests/test_tr2_ciphertext_integrity.py` (16 tests) |
+| **Supporting Evidence** | `evidence/demo-*.log` § TR-2; `tests/test_tr2_ciphertext_integrity.py` (28 tests) |
 
 ---
 
@@ -460,7 +460,7 @@ ciphertexts, because the nonce and hence keystream and tag key differ per record
 
 | **Outcome** | **PASS** — AES-GCM and ChaCha20-Poly1305 |
 |---|---|
-| **Supporting Evidence** | `evidence/demo-*.log` § TR-3; `tests/test_tr3_authentication_tag.py` (14 tests) |
+| **Supporting Evidence** | `evidence/demo-*.log` § TR-3; `tests/test_tr3_authentication_tag.py` (20 tests) |
 
 ---
 
@@ -503,7 +503,7 @@ actual defence.
 
 | **Outcome** | **PASS** — AES-GCM and ChaCha20-Poly1305 |
 |---|---|
-| **Supporting Evidence** | `evidence/demo-*.log` § TR-4; `tests/test_tr4_associated_data.py` (22 tests) |
+| **Supporting Evidence** | `evidence/demo-*.log` § TR-4; `tests/test_tr4_associated_data.py` (33 tests) |
 
 ---
 
@@ -558,7 +558,7 @@ the next.
 
 | **Outcome** | **PASS** — AES-GCM and ChaCha20-Poly1305 |
 |---|---|
-| **Supporting Evidence** | `evidence/demo-*.log` § TR-5; `tests/test_tr5_replay.py` (26 tests) |
+| **Supporting Evidence** | `evidence/demo-*.log` § TR-5; `tests/test_tr5_replay.py` (28 tests) |
 
 ---
 
@@ -589,7 +589,7 @@ tag.
 
 | **Outcome** | **PASS** — AES-GCM and ChaCha20-Poly1305 |
 |---|---|
-| **Supporting Evidence** | `evidence/demo-*.log` § TR-6; `tests/test_tr6_wrong_key.py` (16 tests) |
+| **Supporting Evidence** | `evidence/demo-*.log` § TR-6; `tests/test_tr6_wrong_key.py` (22 tests) |
 
 ---
 
@@ -668,8 +668,8 @@ exactly `prefix ‖ seq.to_bytes(8,'big')`; and the birthday-bound comparison in
 | TR-6 | Wrong-Key Test | **PASS** | **PASS** |
 | TR-7 | Nonce Management Verification | **PASS** | **PASS** |
 
-Automated suite: **168 passed**, 78 per configuration plus 12
-cross-configuration tests.
+Automated suite: **205 passed**, 96 per configuration plus
+13 cross-configuration tests.
 
 ---
 
