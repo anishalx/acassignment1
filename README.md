@@ -2,6 +2,8 @@
 
 CS6530 Applied Cryptography, Assignment 1 · IIT Madras · Jul–Nov 2026
 
+**Authors:** Anish and Sadhanna
+
 A subsystem that protects generic chunked/packetized application data
 (application records) exchanged between a sender and a receiver, using
 Authenticated Encryption with Associated Data in either of two configurations:

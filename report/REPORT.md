@@ -6,6 +6,8 @@
 
 ---
 
+**Authors:** Anish and Sadhanna
+
 ### Contents
 
 1. [Introduction](#1-introduction)
@@ -950,6 +952,10 @@ caught by an internal consistency check rather than by inspection: a control
 column that moved when it should not have, a throughput curve that was
 non-monotonic, a ratio that flipped between runs. The measurement result is only
 as trustworthy as the checks built into the measurement.
+
+AI Assistance Disclosure
+
+AI-based development tools, specifically Antigravity, were used extensively during the implementation of this assignment, including for code generation, debugging, and development assistance. The authors reviewed, tested, and validated the implementation and are responsible for the final submission, experimental evaluation, and technical decisions.
 
 ---
 
