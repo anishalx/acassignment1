@@ -338,6 +338,10 @@ in `evidence/demo-aes-gcm.log` and `evidence/demo-chacha20-poly1305.log`;
 the automated suite is `python -m pytest`. **Every requirement was demonstrated
 separately under both AEAD configurations, with identical outcomes.**
 
+A menu-driven interactive demo (`python -m demo.interactive`) lets the user
+pick an AEAD configuration, type their own payloads, and manually trigger the
+TR-1 to TR-6 demonstrations, with colour-coded verdicts printed to the console.
+
 ### Attack model used throughout
 
 The malicious actor is **on-path**: it observes genuine records in flight,
@@ -978,6 +982,7 @@ Individual stages:
 python -m pytest -q                  # 168 tests, both configurations
 python -m demo.run_demo              # TR-1..TR-7 transcripts
 python -m demo.run_network_demo      # the same over TCP, on-path attacker
+python -m demo.interactive           # menu-driven TR-1..TR-6 demo, your own payloads
 python -m bench.perf                 # TR-8
 python -m bench.nonce_analysis       # TR-7 supporting analysis
 ```

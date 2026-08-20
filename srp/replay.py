@@ -1,65 +1,50 @@
 """Replay handling (FR-8, SR-5, TR-5).
 
-    OWNER: MEMBER 2 -- NOT YET IMPLEMENTED
+Strategy: sliding-window bitmap
+-------------------------------
 
-This module is a specification stub.  It fixes the *interface* the rest of the
-subsystem is already written against; the strategy, the data structure and the
-implementation are Member 2's to design, build and justify.
+The replay window tracks the highest accepted sequence number and a fixed-width
+bitmap recording which of the preceding ``window_size`` sequence numbers have
+been accepted.  This is the same approach used by IPsec ESP (RFC 6479) and
+DTLS 1.3, chosen because it tolerates out-of-order delivery while keeping
+bounded, constant-size state per stream.
 
-What the assignment requires of this module
--------------------------------------------
+Design decisions
+----------------
 
-FR-8  The receiver shall detect and handle replayed protected records.
-SR-5  Replayed records shall not be accepted as fresh application records.
-TR-5  Capture a valid protected record, re-deliver it, and show it is rejected
-      -- separately under both AEAD configurations.
+1. **What counts as "already seen"?**  A record is a duplicate if its
+   ``(session_id, stream_id, seq)`` triple has already been committed.  The
+   window tolerates out-of-order delivery up to ``window_size`` positions behind
+   the highest accepted sequence number.  Section 3.2 puts ordering out of
+   scope, so strict successor checking would be wrong.
 
-Design decisions that are yours to make and to defend in the report
--------------------------------------------------------------------
+2. **Records too old to classify** (``seq < highest_seq - window_size + 1``)
+   are rejected as ``TOO_OLD``.  This is the conservative direction: accepting
+   them would mean accepting records for which replay status is unknown.
 
-1.  What counts as "already seen"?  Strict successor checking (``seq ==
-    last + 1``) is the simplest exact test, but Section 3.2 puts reliable
-    delivery, ordering and retransmission out of scope, so records may legally
-    arrive late or out of order.  Decide how much reordering to tolerate and
-    say why.
-2.  Records too old to classify.  Whatever structure you choose has bounded
-    memory, so some records will fall off the end of your history.  Decide
-    whether those are accepted or rejected, and argue that the direction you
-    picked is the conservative one.
-3.  Where in the receive pipeline the check and the state update belong,
-    relative to the AEAD open.  This ordering has a direct security
-    consequence -- work out what it is before you write the code, because
-    ``Receiver.receive`` has to call the two halves in the right places.
-4.  Why the sequence number can be trusted for any of this at all.  (Look at
-    what ``RecordHeader.aad()`` covers in ``srp/header.py``.)
-5.  Scoping.  Streams are keyed by ``(session_id, stream_id)``; explain what
-    would go wrong if they were not.
+3. **check() vs commit() ordering.**  ``check()`` runs before the AEAD open and
+   must not mutate state.  ``commit()`` runs after the AEAD succeeds.  This
+   prevents a forged record with a high sequence number from advancing the
+   window and locking out subsequent genuine records.
 
-Section 6 requires the chosen strategy to be *documented*, so the reasoning is
-part of the deliverable, not an optional extra.
+4. **Why the sequence number can be trusted.**  The sequence number is part of
+   the header, which is authenticated verbatim as the AAD.  A forged seq fails
+   the AEAD check, so the replay state is never advanced by unauthenticated
+   input.
 
-Integration contract -- do not change these names or signatures
----------------------------------------------------------------
+5. **Scoping.**  Streams are keyed by ``(session_id, stream_id)`` so that a
+   record legitimately sent on stream 1 cannot be replayed as stream 2, and
+   different sessions have independent state.
 
-``srp/session.py`` imports ``DEFAULT_WINDOW_SIZE`` and ``DEFAULT_MAX_STREAMS``;
-``srp/receiver.py`` calls ``ReplayGuard.check`` / ``.commit`` / ``.window_for``
-and compares against ``ReplayVerdict`` members.  Everything else inside the
-module is yours.  Delete ``MEMBER2_STUB`` when the module is real -- the test
-suite keys its "pending" skips off it.
+6. **Bounded state.**  ``max_streams`` caps tracked streams.  Since streams are
+   only created in ``commit()`` (post-authentication), an attacker without the
+   key cannot drive the receiver to the cap.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-
-#: Sentinel: this module is still a stub.  Remove it once implemented.
-MEMBER2_STUB = True
-
-_TODO = (
-    "srp.replay is MEMBER 2's deliverable and is not implemented yet. "
-    "See HANDOFF.md."
-)
 
 #: Default width of the replay history, in records.  Referenced by
 #: :class:`srp.session.SessionPolicy`; tune it if your design calls for a
@@ -97,8 +82,7 @@ class WindowSnapshot:
     """Immutable view of replay state, for logging and test evidence.
 
     TR-5 has to *show* the state, not just assert on it, so the demo and the
-    report both render this.  Adjust the fields to match whatever structure you
-    implement.
+    report both render this.
     """
 
     highest_seq: int
@@ -108,11 +92,23 @@ class WindowSnapshot:
 
     def describe(self) -> str:
         """One-line human-readable rendering for evidence transcripts."""
-        raise NotImplementedError(_TODO)
+        if self.highest_seq < 0:
+            return f"[empty window] size={self.window_size} accepted=0"
+        low = max(0, self.highest_seq - self.window_size + 1)
+        width = min(self.window_size, self.highest_seq + 1)
+        bits = format(self.bitmap & ((1 << width) - 1), f"0{width}b")
+        return (
+            f"highest_seq={self.highest_seq} range=[{low}..{self.highest_seq}] "
+            f"accepted={self.accepted} bitmap={bits}"
+        )
 
 
 class ReplayWindow:
     """Replay history for a single logical stream.
+
+    Uses a sliding bitmap where bit *i* records whether ``highest_seq - i`` has
+    been accepted.  The bitmap is an integer, so Python handles arbitrary widths
+    without overflow.
 
     Parameters
     ----------
@@ -120,62 +116,138 @@ class ReplayWindow:
         How much history to keep, in records.
     """
 
+    __slots__ = ("_size", "_highest_seq", "_bitmap", "_accepted", "_mask")
+
     def __init__(self, size: int = DEFAULT_WINDOW_SIZE) -> None:
-        raise NotImplementedError(_TODO)
+        self._size = size
+        self._highest_seq: int = -1
+        self._bitmap: int = 0
+        self._accepted: int = 0
+        self._mask: int = (1 << size) - 1
 
     # -- query: must not modify any state ---------------------------------
-    #
-    # This is called on attacker-controlled input before anything has been
-    # authenticated.  Work out what that implies and keep it true.
 
     def check(self, seq: int) -> ReplayVerdict:
-        """Classify ``seq`` without modifying any state."""
-        raise NotImplementedError(_TODO)
+        """Classify ``seq`` without modifying any state.
+
+        This is called on attacker-controlled input before anything has been
+        authenticated.  It never mutates, never allocates, and runs in O(1).
+        """
+        if seq < 0:
+            return ReplayVerdict.INVALID
+
+        # First record on this stream: everything is fresh.
+        if self._highest_seq < 0:
+            return ReplayVerdict.FRESH
+
+        # Ahead of the window: fresh.
+        if seq > self._highest_seq:
+            return ReplayVerdict.FRESH
+
+        diff = self._highest_seq - seq
+
+        # Too far behind: cannot classify.
+        if diff >= self._size:
+            return ReplayVerdict.TOO_OLD
+
+        # Within the window: check the bitmap.
+        if self._bitmap & (1 << diff):
+            return ReplayVerdict.DUPLICATE
+
+        return ReplayVerdict.FRESH
 
     def seen(self, seq: int) -> bool:
         """Whether ``seq`` is recorded as accepted (test/evidence helper)."""
-        raise NotImplementedError(_TODO)
+        if self._highest_seq < 0 or seq < 0:
+            return False
+        if seq > self._highest_seq:
+            return False
+        diff = self._highest_seq - seq
+        if diff >= self._size:
+            return False
+        return bool(self._bitmap & (1 << diff))
 
     # -- commit: state change, authenticated input only --------------------
 
     def commit(self, seq: int) -> bool:
         """Record ``seq`` as accepted.  Returns True if state changed.
 
-        Should be total and idempotent: committing a duplicate or an
-        out-of-history value must be a no-op, not an error.
+        Total and idempotent: committing a duplicate or an out-of-history value
+        is a no-op, not an error.
         """
-        raise NotImplementedError(_TODO)
+        if seq < 0:
+            return False
+
+        if self._highest_seq < 0 or seq > self._highest_seq:
+            # Advance the window.
+            if self._highest_seq >= 0:
+                shift = seq - self._highest_seq
+                if shift >= self._size:
+                    # Entire old bitmap is outside the new window.
+                    self._bitmap = 1
+                else:
+                    self._bitmap = ((self._bitmap << shift) | 1) & self._mask
+            else:
+                self._bitmap = 1
+            self._highest_seq = seq
+            self._accepted += 1
+            return True
+
+        diff = self._highest_seq - seq
+        if diff >= self._size:
+            # Too old to record; no-op.
+            return False
+
+        bit = 1 << diff
+        if self._bitmap & bit:
+            # Already committed; idempotent no-op.
+            return False
+
+        self._bitmap |= bit
+        self._accepted += 1
+        return True
 
     # -- introspection -----------------------------------------------------
 
     @property
     def highest_seq(self) -> int:
         """Highest accepted sequence number, or ``-1`` if none yet."""
-        raise NotImplementedError(_TODO)
+        return self._highest_seq
 
     @property
     def size(self) -> int:
-        raise NotImplementedError(_TODO)
+        return self._size
 
     @property
     def accepted(self) -> int:
-        raise NotImplementedError(_TODO)
+        return self._accepted
 
     def snapshot(self) -> WindowSnapshot:
-        raise NotImplementedError(_TODO)
+        return WindowSnapshot(
+            highest_seq=self._highest_seq,
+            window_size=self._size,
+            accepted=self._accepted,
+            bitmap=self._bitmap & self._mask,
+        )
 
 
 class ReplayGuard:
     """Manages one :class:`ReplayWindow` per stream.
+
+    Streams are only created in ``commit()`` (post-authentication), so an
+    attacker without the key cannot exhaust the ``max_streams`` budget.
 
     Parameters
     ----------
     window_size:
         Passed through to each per-stream window.
     max_streams:
-        Upper bound on tracked streams.  Decide what happens when it is hit,
-        and what stops an attacker from driving the receiver into that state.
+        Upper bound on tracked streams.  At the cap, new unauthenticated
+        streams are reported as ``INVALID`` and new authenticated streams
+        cannot be committed.
     """
+
+    __slots__ = ("_window_size", "_max_streams", "_streams", "_evictions")
 
     def __init__(
         self,
@@ -183,36 +255,60 @@ class ReplayGuard:
         *,
         max_streams: int = DEFAULT_MAX_STREAMS,
     ) -> None:
-        raise NotImplementedError(_TODO)
+        self._window_size = window_size
+        self._max_streams = max_streams
+        self._streams: dict[StreamKey, ReplayWindow] = {}
+        self._evictions = 0
 
     def check(self, key: StreamKey, seq: int) -> ReplayVerdict:
         """Pre-authentication query.  Must not allocate and must not mutate."""
-        raise NotImplementedError(_TODO)
+        window = self._streams.get(key)
+        if window is None:
+            # Unknown stream.  Don't allocate — this is attacker-controlled
+            # input.  If we have capacity, treat it as fresh.  If we are at
+            # the cap, reject it.
+            if len(self._streams) >= self._max_streams:
+                return ReplayVerdict.INVALID
+            if seq < 0:
+                return ReplayVerdict.INVALID
+            return ReplayVerdict.FRESH
+        return window.check(seq)
 
     def commit(self, key: StreamKey, seq: int) -> bool:
-        """Post-authentication update."""
-        raise NotImplementedError(_TODO)
+        """Post-authentication update.
+
+        Creates the stream if it does not exist yet (safe because only
+        authenticated records reach this point).
+        """
+        window = self._streams.get(key)
+        if window is None:
+            if len(self._streams) >= self._max_streams:
+                return False
+            window = ReplayWindow(self._window_size)
+            self._streams[key] = window
+        return window.commit(seq)
 
     # -- introspection -----------------------------------------------------
 
     def window_for(self, key: StreamKey) -> ReplayWindow | None:
-        raise NotImplementedError(_TODO)
+        return self._streams.get(key)
 
     @property
     def tracked_streams(self) -> int:
-        raise NotImplementedError(_TODO)
+        return len(self._streams)
 
     @property
     def evictions(self) -> int:
-        raise NotImplementedError(_TODO)
+        return self._evictions
 
     @property
     def window_size(self) -> int:
-        raise NotImplementedError(_TODO)
+        return self._window_size
 
     def reset(self) -> None:
         """Drop all replay state (used when starting a fresh key epoch)."""
-        raise NotImplementedError(_TODO)
+        self._streams.clear()
+        self._evictions = 0
 
 
 __all__ = [
